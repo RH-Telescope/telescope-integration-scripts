@@ -1,17 +1,31 @@
-import sys,socket
+import sys,socket, getopt
 import requests
 import json
 import math
 import psycopg2
 from config import config
+from datetime import datetime, timezone
 
+
+## Parse the command line vars
+argv = sys.argv[1:]
+opts, args = getopt.getopt(argv,"hi:",["id="])
+for opt, arg in opts:
+    if opt == '-h':
+        print ('rhacs-compliance-check.py -i <id of integraion>')
+        sys.exit()
+    elif opt in ("-i", "--id"):
+         integrationId = arg
+
+## Connect to the db
 conn = None
 params = config()
 conn = psycopg2.connect(**params)
 cur = conn.cursor()
 
 # Get relevant db objects
-telescope_query = "SELECT * from integrations WHERE integration_name = 'RHACS Compliance Score'"
+#telescope_query = "SELECT * from integrations WHERE integration_name = 'RHACS Compliance Score'"
+telescope_query = "SELECT * from integrations WHERE integration_id = '" + integrationId + "'"
 cur.execute(telescope_query)
 row = cur.fetchone()
 
@@ -41,8 +55,14 @@ if score >= SUCCESS_CRITERIA:
 	flag_id = 2
 
 ## Update the capability table with the new flag_id (1 = red, 2 = green)
-updateQuery = "UPDATE capability set flag_id = '" + str(flag_id) + "' WHERE id = '" + str(CAPABILITY_ID) + "'"
-cur.execute(updateQuery)
+capabilityUpdateQuery = "UPDATE capability set flag_id = '" + str(flag_id) + "' WHERE id = '" + str(CAPABILITY_ID) + "'"
+cur.execute(capabilityUpdateQuery)
+conn.commit()
+
+## Update the integrations table with last_update
+dt = str(datetime.now(timezone.utc))
+integrationUpdateQuery = "UPDATE integrations set last_update = '" + dt + "' WHERE integration_id = '" + integrationId + "'"
+cur.execute(integrationUpdateQuery)
 conn.commit()
 
 cur.close()
